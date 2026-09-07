@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# scratch / build artifacts (optional to keep)
+*.tmp

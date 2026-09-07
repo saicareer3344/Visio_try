@@ -1,1 +1,126 @@
-# Visio_try
+# Visio Generator — JSON → .vsdx
+
+Create a Microsoft Visio **`.vsdx`** drawing from a JSON description of pages,
+coloured boxes (rectangle / ellipse) and labelled connector arrows.
+
+* Standard-library only: needs **no third‑party `vsdx` package** and **no external
+  template file** at run time.
+* Multi-page, per-page size, per-shape fill / line / text colours and font sizes.
+* Connectors are drawn as stroked lines **between the edges of the boxes** with an
+  arrow head pointing at the target shape, plus an optional white label above the
+  line.
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `visio_generator.py` | The generator (single self-contained module). |
+| `network_diagram.json` | Example input: a small network topology. |
+| `input.json` | Example input: the built-in sample architecture diagram. |
+| `output.vsdx` | `output.vsdx` generated from `network_diagram.json`. |
+
+> **How it works.** A `.vsdx` file is a ZIP archive that follows the Open
+> Packaging Convention.  Most of it is XML that Visio writes once and that is
+> effectively static (the document stylesheet, font tables, a "Dynamic
+> connector" master page, window state …).  Only the page content changes from
+> one diagram to the next.  To guarantee files that open cleanly, the module
+> embeds a small, known-good OPC *boilerplate* (derived from a real, empty Visio
+> drawing) and regenerates only the page parts from your JSON.  The static
+> boilerplate is stored as a base64 constant near the bottom of the file.
+
+## Usage
+
+### 1. Command line
+
+```bash
+python3 visio_generator.py network_diagram.json          # -> output.vsdx
+python3 visio_generator.py input.json my_diagram.vsdx    # custom output name
+python3 visio_generator.py                               # generate the built-in sample
+```
+
+### 2. From Python
+
+```python
+from visio_generator import create_visio_from_json
+
+# from a file
+create_visio_from_json("network_diagram.json", "network.vsdx")
+
+# from a JSON string / dict
+import json
+create_visio_from_json(json.dumps({...}), "simple.vsdx")
+```
+
+## JSON schema
+
+```jsonc
+{
+  "document": {
+    "title": "Network Diagram",      // optional
+    "description": "..."             // optional
+  },
+  "pages": [
+    {
+      "name":   "Page-1",            // page name
+      "width":  11,                  // page width  in inches
+      "height": 8.5,                 // page height in inches
+
+      "shapes": [
+        {
+          "id": "1",                 // unique id used by connectors
+          "type": "rectangle",       // "rectangle" | "ellipse"
+          "text": "Web Server",
+          "x": 2.0,                  // centre x (inches)
+          "y": 6.0,                  // centre y (inches, from bottom of page)
+          "width":  2.0,             // inches
+          "height": 1.0,             // inches
+          "fill_color":  "#4472C4",  // #RRGGBB
+          "line_color":  "#2F5597",
+          "text_color":  "#FFFFFF",
+          "font_size":   12          // points
+        }
+      ],
+
+      "connectors": [
+        {
+          "from_shape_id": "5",      // source shape id
+          "to_shape_id":   "4",      // target shape id (arrow head here)
+          "label": "HTTPS",          // optional label drawn above the line
+          "line_color": "#000000",
+          "line_weight": 1.5         // points
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Notes on coordinates
+
+* `x` / `y` are the **centre** of a shape.
+* `y` is measured from the **bottom** of the page (Visio's convention).
+* The JSON parser validates that every connector references two shapes that exist.
+
+## Output preview
+
+Opening `output.vsdx` in Visio shows:
+
+* **Web Server**, **Application Server**, **Database** along the top,
+* a **Load Balancer** and **Firewall** lower down,
+* arrow connectors labelled **HTTPS / HTTP / SQL** linking the nodes.
+
+The same `visio_generator.py` code is used to regenerate it:
+
+```bash
+python3 visio_generator.py network_diagram.json output.vsdx
+```
+
+## Validation / note
+
+The generated packages are validated for structural correctness (ZIP integrity,
+well-formed XML, every OPC relationship / content-type target present, unique
+shape IDs) and are re-opened with the `python-vsdx` parser as a sanity check.
+They are intended to open in Microsoft Visio 2013+, as well as compatible
+importers such as draw.io and LibreOffice Draw.  Because connectors here are
+plain stroked line shapes (not "sticky" dynamic connectors), moving a box does
+not automatically re-route its connectors — regenerate from JSON instead.

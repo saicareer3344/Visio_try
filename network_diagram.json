@@ -1,0 +1,110 @@
+{
+  "document": {
+    "title": "Network Diagram",
+    "description": "Sample network topology"
+  },
+  "pages": [
+    {
+      "name": "Page-1",
+      "width": 11,
+      "height": 8.5,
+      "shapes": [
+        {
+          "id": "1",
+          "type": "rectangle",
+          "text": "Web Server",
+          "x": 2.0,
+          "y": 6.0,
+          "width": 2.0,
+          "height": 1.0,
+          "fill_color": "#4472C4",
+          "line_color": "#2F5597",
+          "text_color": "#FFFFFF",
+          "font_size": 12
+        },
+        {
+          "id": "2",
+          "type": "rectangle",
+          "text": "Application Server",
+          "x": 5.0,
+          "y": 6.0,
+          "width": 2.0,
+          "height": 1.0,
+          "fill_color": "#70AD47",
+          "line_color": "#548235",
+          "text_color": "#FFFFFF",
+          "font_size": 12
+        },
+        {
+          "id": "3",
+          "type": "rectangle",
+          "text": "Database",
+          "x": 8.0,
+          "y": 6.0,
+          "width": 2.0,
+          "height": 1.0,
+          "fill_color": "#FFC000",
+          "line_color": "#BF9000",
+          "text_color": "#000000",
+          "font_size": 12
+        },
+        {
+          "id": "4",
+          "type": "rectangle",
+          "text": "Load Balancer",
+          "x": 3.5,
+          "y": 3.0,
+          "width": 2.5,
+          "height": 1.0,
+          "fill_color": "#ED7D31",
+          "line_color": "#C55A11",
+          "text_color": "#FFFFFF",
+          "font_size": 12
+        },
+        {
+          "id": "5",
+          "type": "rectangle",
+          "text": "Firewall",
+          "x": 3.5,
+          "y": 1.0,
+          "width": 2.5,
+          "height": 1.0,
+          "fill_color": "#FF0000",
+          "line_color": "#C00000",
+          "text_color": "#FFFFFF",
+          "font_size": 12
+        }
+      ],
+      "connectors": [
+        {
+          "from_shape_id": "5",
+          "to_shape_id": "4",
+          "label": "HTTPS",
+          "line_color": "#000000",
+          "line_weight": 1.5
+        },
+        {
+          "from_shape_id": "4",
+          "to_shape_id": "1",
+          "label": "HTTP",
+          "line_color": "#4472C4",
+          "line_weight": 1.0
+        },
+        {
+          "from_shape_id": "4",
+          "to_shape_id": "2",
+          "label": "HTTP",
+          "line_color": "#70AD47",
+          "line_weight": 1.0
+        },
+        {
+          "from_shape_id": "2",
+          "to_shape_id": "3",
+          "label": "SQL",
+          "line_color": "#FFC000",
+          "line_weight": 1.0
+        }
+      ]
+    }
+  ]
+}
