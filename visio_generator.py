@@ -710,13 +710,38 @@ def validate_json(json_data: dict) -> None:
 
 
 def create_visio_from_json(json_input, output_file="output.vsdx"):
-    """Create a .vsdx file from a JSON file path or JSON string."""
-    if os.path.isfile(json_input):
-        with open(json_input, "r", encoding="utf-8") as f:
-            json_data = json.load(f)
+    """Create a .vsdx file from a JSON file path or JSON string.
+
+    json_input may be a path to a .json file or an inline JSON string.
+    File reading is BOM/encoding tolerant so that Windows editors (Notepad's
+    "UTF-8 with BOM", or accidentally UTF-16 saved files) don't break parsing.
+    """
+    if isinstance(json_input, str) and os.path.isfile(json_input):
+        with open(json_input, "r", encoding="utf-8-sig") as f:
+            text = f.read()
+        if not text.strip():
+            raise ValueError(
+                f"The JSON file is empty: {json_input!r}\n"
+                f"Open it and make sure it contains a '{{...}}' document.")
+        try:
+            json_data = json.loads(text)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Could not parse the JSON file {json_input!r}.\n"
+                f"Reason: {e}\n"
+                f"If you saved it from Notepad, re-save with "
+                f"Encoding: UTF-8 (not 'Unicode'/UTF-16).") from None
         print(f"Loaded JSON from file: {json_input}")
     else:
-        json_data = json.loads(json_input)
+        # treat as an inline JSON string
+        if isinstance(json_input, str) and not json_input.strip():
+            raise ValueError("json_input is empty.")
+        try:
+            json_data = json.loads(json_input)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Could not parse the JSON string you passed.\nReason: {e}") \
+                from None
         print("Loaded JSON from string")
 
     validate_json(json_data)
