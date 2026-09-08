@@ -849,20 +849,47 @@ def _auto_layout_simple(data: dict) -> dict:
     }
 
 
+def _find_schema_dict(data):
+    """Return the dict that holds diagram content, tolerating a JSON that is a
+    single-element list, or that nests the real object one level deep (e.g.
+    {'diagram': {...}, 'nodes': [...]} is already fine)."""
+    if isinstance(data, list):
+        if len(data) == 1:
+            data = data[0]
+        else:
+            # maybe it's already our list-of-pages form but missing wrapper
+            raise ValueError("JSON is a top-level array; expected an object "
+                             "with 'pages' or 'nodes'.")
+    if not isinstance(data, dict):
+        raise ValueError("JSON must decode to an object (a {...}), got "
+                         f"{type(data).__name__}.")
+    # unwrap a single extra level if the actual content is nested under one key
+    if "pages" not in data and "nodes" not in data:
+        for v in data.values():
+            if isinstance(v, dict) and ("pages" in v or "nodes" in v):
+                data = v
+                break
+    return data
+
+
 def _normalise_json(data: dict) -> dict:
     """Accept either the standard {document, pages} schema or the simpler
     {diagram, nodes, connections} schema."""
-    if isinstance(data, dict) and "pages" in data:
+    data = _find_schema_dict(data)
+    if "pages" in data:
         return data
-    if isinstance(data, dict) and "nodes" in data:
+    if "nodes" in data:
         return _auto_layout_simple(data)
+
+    keys = ", ".join(repr(k) for k in data.keys()) or "(none)"
     raise ValueError(
         "Unrecognised JSON schema.\n"
-        "Use either:\n"
-        "  {\"pages\":[{\"name\":...,\"shapes\":[...],\"connectors\":[...]}]}\n"
-        "or the simpler\n"
-        "  {\"diagram\":{...},\"nodes\":[{\"id\":..,\"label\":..,"
-        "\"type\":..}],\"connections\":[{\"from\":..,\"to\":..,\"label\":..}]}")
+        f"Top-level keys found: {keys}\n\n"
+        "The file must be an object containing EITHER:\n"
+        "  \"pages\": [...]   (full schema, with shapes & connectors)\n"
+        "  \"nodes\": [...]   (simple schema: labelled nodes + connections)\n\n"
+        "If you just pasted JSON from chat, make sure the file really starts "
+        "with '{' and contains one of those keys, then try again.")
 
 
 # ---------------------------------------------------------------------------
@@ -942,6 +969,14 @@ def create_visio_from_json(json_input, output_file="output.vsdx"):
                 f"Could not parse the JSON string you passed.\nReason: {e}") \
                 from None
         print("Loaded JSON from string")
+
+    # Show what we actually read, so schema problems are obvious.
+    if isinstance(json_data, dict):
+        print(f"Parsed object with top-level keys: "
+              f"{', '.join(repr(k) for k in json_data)}")
+    else:
+        print(f"Parsed JSON as {type(json_data).__name__} "
+              f"(expected a dict/object).")
 
     # Accept either the standard schema or the simple {nodes, connections}
     # schema (auto-laid-out).
