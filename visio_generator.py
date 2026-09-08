@@ -46,6 +46,7 @@ import os
 import re
 import sys
 import zipfile
+from collections import defaultdict, deque
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
@@ -689,6 +690,182 @@ class VisioDocument:
 
 
 # ---------------------------------------------------------------------------
+# Alternate / simple schema support
+# ---------------------------------------------------------------------------
+# A lot of people describe a diagram with just labelled nodes and connections
+# (no coordinates / colours).  We auto-detect that shape and lay it out on a
+# fresh page for them.
+_TYPE_COLORS = {
+    "person": "#4472C4", "user": "#4472C4", "client": "#4472C4",
+    "human": "#4472C4",
+    "application": "#70AD47", "app": "#70AD47", "web": "#70AD47",
+    "frontend": "#70AD47",
+    "process": "#ED7D31", "agent": "#ED7D31", "service": "#ED7D31",
+    "worker": "#ED7D31", "function": "#ED7D31",
+    "ai": "#7030A0", "llm": "#7030A0", "model": "#7030A0", "ml": "#7030A0",
+    "database": "#FFC000", "db": "#FFC000", "storage": "#FFC000",
+    "sql": "#FFC000", "postgres": "#FFC000",
+    "gateway": "#2E75B6", "api": "#2E75B6", "proxy": "#2E75B6",
+    "cloud": "#5B9BD5", "infra": "#5B9BD5", "server": "#5B9BD5",
+    "queue": "#A5A5A5", "message": "#A5A5A5", "bus": "#A5A5A5",
+    "security": "#C00000", "firewall": "#C00000", "auth": "#C00000",
+}
+
+
+def _luminance(hex_color: str) -> float:
+    s = _clean_rgb(hex_color).lstrip("#")
+    r, g, b = (int(s[i:i + 2], 16) for i in (0, 2, 4))
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def _darker(hex_color: str, factor: float = 0.78) -> str:
+    s = _clean_rgb(hex_color).lstrip("#")
+    r, g, b = (max(0, int(int(s[i:i + 2], 16) * factor))
+               for i in (0, 2, 4))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _auto_layout_simple(data: dict) -> dict:
+    """Turn a {diagram, nodes[], connections[]} document into the standard
+    {document, pages[]} shape, choosing positions automatically."""
+    nodes = data.get("nodes", []) or []
+    conns = data.get("connections", []) or []
+    if not nodes:
+        raise ValueError("No 'nodes' found in the diagram JSON.")
+
+    by_id = {str(n.get("id")): n for n in nodes}
+
+    # ---- directed graph + longest-path layering (a->b means a feeds b) ----
+    indeg = {nid: 0 for nid in by_id}
+    out = {nid: [] for nid in by_id}
+    edge_list = []
+    for c in conns:
+        a, b = str(c.get("from", "")), str(c.get("to", ""))
+        if a in by_id and b in by_id:
+            out[a].append(b)
+            indeg[b] += 1
+            edge_list.append((a, b, c.get("label", "")))
+
+    # topological order (Kahn), with a cycle-safe fallback
+    d = dict(indeg)
+    tq = deque(nid for nid in by_id if d[nid] == 0)
+    order = []
+    while tq:
+        n = tq.popleft()
+        order.append(n)
+        for m in out[n]:
+            d[m] -= 1
+            if d[m] == 0:
+                tq.append(m)
+    for nid in by_id:
+        if nid not in order:
+            order.append(nid)
+
+    layer = {nid: 0 for nid in by_id}
+    for nid in order:
+        for m in out[nid]:
+            layer[m] = max(layer[m], layer[nid] + 1)
+
+    # ---- place nodes in vertical columns, one column per distinct layer ----
+    distinct = sorted(set(layer.values()))
+    col_of_layer = {lv: i for i, lv in enumerate(distinct)}
+    cols = [[] for _ in distinct]
+    for nid in by_id:
+        cols[col_of_layer[layer[nid]]].append(nid)
+
+    ncols = len(distinct)
+    max_per_col = max((len(c) for c in cols), default=1)
+    margin = 1.0
+    node_w, node_h = 2.6, 1.15
+    hgap, vgap = 1.6, 1.2
+    page_w = margin * 2 + ncols * node_w + (ncols - 1) * hgap
+    # a little breathing room above/below each column of nodes
+    page_h = margin * 2 + max_per_col * (node_h + vgap) - vgap
+    page_h = max(page_h, 3.0)
+    step = (page_h - margin * 2) / max(max_per_col, 1)
+    if max_per_col == 1:
+        step = 0.0
+
+    shapes = []
+    node_seq = []  # order list of ids that exist, for stable vertical order
+    for nid in by_id:
+        node_seq.append(nid)
+    seq_idx = {nid: i for i, nid in enumerate(node_seq)}
+
+    for ci, col in enumerate(cols):
+        # sort within column by original node order for a stable layout
+        col = sorted(col, key=lambda nid: seq_idx[nid])
+        x = margin + ci * (node_w + hgap) + node_w / 2.0
+        ys = []
+        if len(col) == 1:
+            ys.append(page_h / 2.0)
+        else:
+            top = margin + node_h / 2.0
+            bottom = page_h - margin - node_h / 2.0
+            ys = [top + (bottom - top) * (i / (len(col) - 1))
+                  for i in range(len(col))]
+        for nid, y in zip(col, ys):
+            nd = by_id[nid]
+            ntype = str(nd.get("type", "")).lower().strip()
+            fill = _TYPE_COLORS.get(ntype, "#5B9BD5")
+            text_color = "#000000" if _luminance(fill) > 160 else "#FFFFFF"
+            shapes.append({
+                "id": str(nd.get("id")),
+                "type": "rectangle",
+                "text": nd.get("label", str(nd.get("id"))),
+                "x": round(x, 3),
+                "y": round(y, 3),
+                "width": node_w,
+                "height": node_h,
+                "fill_color": fill,
+                "line_color": _darker(fill),
+                "text_color": text_color,
+                "font_size": 12,
+            })
+
+    connectors = []
+    for a, b, label in edge_list:
+        connectors.append({
+            "from_shape_id": a,
+            "to_shape_id": b,
+            "label": label,
+            "line_color": "#595959",
+            "line_weight": 1.25,
+        })
+
+    doc = data.get("diagram", {}) or {}
+    return {
+        "document": {
+            "title": doc.get("title", "Diagram"),
+            "description": doc.get("description", ""),
+        },
+        "pages": [{
+            "name": doc.get("page_name", "Page-1"),
+            "width": round(page_w, 3),
+            "height": round(page_h, 3),
+            "shapes": shapes,
+            "connectors": connectors,
+        }],
+    }
+
+
+def _normalise_json(data: dict) -> dict:
+    """Accept either the standard {document, pages} schema or the simpler
+    {diagram, nodes, connections} schema."""
+    if isinstance(data, dict) and "pages" in data:
+        return data
+    if isinstance(data, dict) and "nodes" in data:
+        return _auto_layout_simple(data)
+    raise ValueError(
+        "Unrecognised JSON schema.\n"
+        "Use either:\n"
+        "  {\"pages\":[{\"name\":...,\"shapes\":[...],\"connectors\":[...]}]}\n"
+        "or the simpler\n"
+        "  {\"diagram\":{...},\"nodes\":[{\"id\":..,\"label\":..,"
+        "\"type\":..}],\"connections\":[{\"from\":..,\"to\":..,\"label\":..}]}")
+
+
+# ---------------------------------------------------------------------------
 # entry points
 # ---------------------------------------------------------------------------
 def validate_json(json_data: dict) -> None:
@@ -765,6 +942,14 @@ def create_visio_from_json(json_input, output_file="output.vsdx"):
                 f"Could not parse the JSON string you passed.\nReason: {e}") \
                 from None
         print("Loaded JSON from string")
+
+    # Accept either the standard schema or the simple {nodes, connections}
+    # schema (auto-laid-out).
+    was_simple = isinstance(json_data, dict) and "nodes" in json_data
+    json_data = _normalise_json(json_data)
+    if was_simple:
+        print("Detected simple 'nodes/connections' schema -> auto-laid out "
+              "diagram.")
 
     validate_json(json_data)
 

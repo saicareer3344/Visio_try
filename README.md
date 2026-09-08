@@ -38,6 +38,38 @@ python3 visio_generator.py input.json my_diagram.vsdx    # custom output name
 python3 visio_generator.py                               # generate the built-in sample
 ```
 
+### 1b. Simple schema (no coordinates needed)
+
+You can also feed a much simpler diagram with just `nodes` and `connections`;
+the generator **auto-detect this and lays the diagram out for you**:
+
+```jsonc
+{
+  "diagram": { "title": "AI Agent System" },
+  "nodes": [
+    {"id": "user",     "label": "User",            "type": "person"},
+    {"id": "frontend", "label": "Web Application",  "type": "application"},
+    {"id": "agent",    "label": "AI Agent",         "type": "process"},
+    {"id": "llm",      "label": "LLM",              "type": "ai"},
+    {"id": "database", "label": "PostgreSQL",       "type": "database"}
+  ],
+  "connections": [
+    {"from": "user",     "to": "frontend", "label": "Uses"},
+    {"from": "frontend", "to": "agent",    "label": "API Request"},
+    {"from": "agent",    "to": "llm",      "label": "Prompt"},
+    {"from": "agent",    "to": "database", "label": "Read / Write"}
+  ]
+}
+```
+
+Run it the same way:
+```bash
+python visio_generator.py sample_ai_agent_diagram.json ai_agent.vsdx
+```
+Known `type` values get sensible colours (person/application/process/ai/
+database/gateway/cloud/queue/security, …).  Layout flows left→right following
+the connections.  You can still override anything by using the full schema.
+
 ### 2. From Python
 
 ```python

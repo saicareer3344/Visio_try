@@ -1,0 +1,18 @@
+{
+  "diagram": {
+    "title": "AI Agent System"
+  },
+  "nodes": [
+    {"id": "user", "label": "User", "type": "person"},
+    {"id": "frontend", "label": "Web Application", "type": "application"},
+    {"id": "agent", "label": "AI Agent", "type": "process"},
+    {"id": "llm", "label": "LLM", "type": "ai"},
+    {"id": "database", "label": "PostgreSQL", "type": "database"}
+  ],
+  "connections": [
+    {"from": "user", "to": "frontend", "label": "Uses"},
+    {"from": "frontend", "to": "agent", "label": "API Request"},
+    {"from": "agent", "to": "llm", "label": "Prompt"},
+    {"from": "agent", "to": "database", "label": "Read / Write"}
+  ]
+}
