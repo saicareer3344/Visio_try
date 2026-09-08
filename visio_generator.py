@@ -1284,17 +1284,20 @@ def _edge_label_prefer(elem):
 
 
 # ---- layout constants for grouped/container diagrams (inches) ------------
-_G_HEAD = 0.5       # container title-bar height
-_G_PAD = 0.42       # container inner padding around its content
-_G_NODE_H = 0.62    # node box height
-_G_SIB = 0.5        # gap between siblings inside a container row
-_G_ROW = 0.5        # vertical gap between stacked rows
-_G_OUT = 1.35       # gap between top-level boxes (room for arrowheads+labels)
-_G_MARGIN = 0.6
+_G_HEAD = 0.46      # container title-bar height
+_G_PAD = 0.5        # container inner padding around its content
+_G_NODE_H = 0.66    # node box height
+_G_SIB = 0.9        # gap between siblings inside a container row (room for arrows)
+_G_ROW = 0.7        # vertical gap between stacked rows
+_G_OUT = 2.4        # gap between top-level boxes (wide lanes for arrows+labels)
+_G_MARGIN = 0.8
+# arrows on grouped diagrams are thicker + higher-contrast so they read clearly
+_G_CONN_COLOR = "#333333"
+_G_CONN_WEIGHT = 1.7
 
 
 def _node_width(text):
-    return 0.6 + 0.082 * len(text)
+    return 0.7 + 0.082 * len(text)
 
 
 def _build_pages_grouped(node_objs, cont_elems, edges, meta):
@@ -1461,7 +1464,8 @@ def _build_pages_grouped(node_objs, cont_elems, edges, meta):
             continue
         connectors.append({
             "from_shape_id": e["from"], "to_shape_id": e["to"],
-            "label": e["label"], "line_color": "#7F7F7F", "line_weight": 1.0,
+            "label": e["label"], "line_color": _G_CONN_COLOR,
+            "line_weight": _G_CONN_WEIGHT,
         })
 
     return {
