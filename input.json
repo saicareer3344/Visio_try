@@ -1,0 +1,117 @@
+{
+  "document": {
+    "title": "Sample Architecture Diagram",
+    "description": "Created programmatically from JSON"
+  },
+  "pages": [
+    {
+      "name": "Architecture",
+      "width": 11,
+      "height": 8.5,
+      "shapes": [
+        {
+          "id": "1",
+          "type": "rectangle",
+          "text": "Client",
+          "x": 2.0,
+          "y": 7.0,
+          "width": 2.0,
+          "height": 1.0,
+          "fill_color": "#5B9BD5",
+          "line_color": "#2E75B6",
+          "text_color": "#FFFFFF",
+          "font_size": 14
+        },
+        {
+          "id": "2",
+          "type": "rectangle",
+          "text": "API Gateway",
+          "x": 5.5,
+          "y": 7.0,
+          "width": 2.0,
+          "height": 1.0,
+          "fill_color": "#70AD47",
+          "line_color": "#548235",
+          "text_color": "#FFFFFF",
+          "font_size": 14
+        },
+        {
+          "id": "3",
+          "type": "rectangle",
+          "text": "Microservice A",
+          "x": 3.0,
+          "y": 4.5,
+          "width": 2.0,
+          "height": 1.0,
+          "fill_color": "#FFC000",
+          "line_color": "#BF9000",
+          "text_color": "#000000",
+          "font_size": 12
+        },
+        {
+          "id": "4",
+          "type": "rectangle",
+          "text": "Microservice B",
+          "x": 7.0,
+          "y": 4.5,
+          "width": 2.0,
+          "height": 1.0,
+          "fill_color": "#ED7D31",
+          "line_color": "#C55A11",
+          "text_color": "#FFFFFF",
+          "font_size": 12
+        },
+        {
+          "id": "5",
+          "type": "rectangle",
+          "text": "Database",
+          "x": 5.0,
+          "y": 2.0,
+          "width": 2.5,
+          "height": 1.0,
+          "fill_color": "#4472C4",
+          "line_color": "#2F5597",
+          "text_color": "#FFFFFF",
+          "font_size": 14
+        }
+      ],
+      "connectors": [
+        {
+          "from_shape_id": "1",
+          "to_shape_id": "2",
+          "label": "REST",
+          "line_color": "#333333",
+          "line_weight": 1.5
+        },
+        {
+          "from_shape_id": "2",
+          "to_shape_id": "3",
+          "label": "gRPC",
+          "line_color": "#70AD47",
+          "line_weight": 1.0
+        },
+        {
+          "from_shape_id": "2",
+          "to_shape_id": "4",
+          "label": "gRPC",
+          "line_color": "#70AD47",
+          "line_weight": 1.0
+        },
+        {
+          "from_shape_id": "3",
+          "to_shape_id": "5",
+          "label": "SQL",
+          "line_color": "#4472C4",
+          "line_weight": 1.0
+        },
+        {
+          "from_shape_id": "4",
+          "to_shape_id": "5",
+          "label": "SQL",
+          "line_color": "#4472C4",
+          "line_weight": 1.0
+        }
+      ]
+    }
+  ]
+}
