@@ -1,0 +1,20 @@
+{
+  "name": "Order Processing System",
+  "boundaries": [
+    {"id": "zone_ext", "name": "External Zone"},
+    {"id": "zone_int", "name": "Internal Zone"}
+  ],
+  "components": [
+    {"component_id": "customer", "name": "Customer", "kind": "person"},
+    {"component_id": "shop", "name": "Shop Front", "kind": "application"},
+    {"component_id": "svc", "name": "Order Service", "kind": "process"},
+    {"component_id": "pay", "name": "Payment Provider", "kind": "external"},
+    {"component_id": "db", "name": "Order DB", "kind": "database"}
+  ],
+  "flows": [
+    {"source": "customer", "target": "shop", "description": "Browse"},
+    {"source": "shop", "target": "svc", "description": "Place order"},
+    {"source": "svc", "target": "pay", "description": "Charge"},
+    {"source": "svc", "target": "db", "description": "Persist"}
+  ]
+}

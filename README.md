@@ -1,5 +1,11 @@
 # Visio Generator — JSON → .vsdx
 
+> **Universal input.** You do not need to match a fixed schema. The generator
+> *analyses* whatever JSON you give it, finds the document title, the array of
+> node/component objects, and the array of links between them, then lays the
+> diagram out automatically. Anything already in the full `pages` schema is
+> rendered exactly as given.
+
 Create a Microsoft Visio **`.vsdx`** drawing from a JSON description of pages,
 coloured boxes (rectangle / ellipse) and labelled connector arrows.
 
@@ -9,6 +15,26 @@ coloured boxes (rectangle / ellipse) and labelled connector arrows.
 * Connectors are drawn as stroked lines **between the edges of the boxes** with an
   arrow head pointing at the target shape, plus an optional white label above the
   line.
+
+### It understands many shapes of JSON
+The reader looks for the *structure*, not fixed names, so these all work:
+
+```jsonc
+// 1) nodes + connections (or edges/links/...)
+{ "diagram": {"title": "..."}, "nodes": [{"id":"a","label":"A"}],
+  "connections": [{"from":"a","to":"b","label":"1"}] }
+
+// 2) components + flows + boundaries
+{ "name": "...", "components": [{"component_id":"ui","name":"UI","kind":"app"}],
+  "flows": [{"source":"ui","target":"api","description":"go"}] }
+
+// 3) full schema (already laid out, coords honoured)
+{ "document": {...}, "pages": [{"name":"P","shapes":[...],"connectors":[...]}] }
+```
+
+It detects each node's *label*, an optional *type* (used to pick a colour), and
+optional *x / y / width / height*. When coordinates are absent it lays the
+diagram out left-to-right; when present it honours them.
 
 ## Files
 

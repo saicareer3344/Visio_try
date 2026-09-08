@@ -849,47 +849,442 @@ def _auto_layout_simple(data: dict) -> dict:
     }
 
 
-def _find_schema_dict(data):
-    """Return the dict that holds diagram content, tolerating a JSON that is a
-    single-element list, or that nests the real object one level deep (e.g.
-    {'diagram': {...}, 'nodes': [...]} is already fine)."""
+# ---------------------------------------------------------------------------
+# Universal schema analysis
+# ---------------------------------------------------------------------------
+# Rather than requiring one fixed schema, we *inspect* whatever JSON arrives
+# and discover, structurally:
+#   * a document title/description
+#   * an array of "node"-like objects (something with an id/name/label/...)
+#   * an array of "edge"-like objects (something linking two node ids)
+# and render a .vsdx from that.  The full {document, pages} schema is still
+# honoured directly (it has shapes/connectors already laid out).
+_GRAPH_HINT = {  # node array key names carry the most weight when choosing
+    "nodes", "node", "shapes", "components", "elements", "vertices",
+    "vertex", "boxes", "objects", "items", "blocks", "componentsList",
+    "nodesList", "shapesList",
+}
+_EDGE_HINT = {  # edge array key names
+    "connections", "edges", "links", "relationships", "flows", "relations",
+    "connectors", "arrows", "lines", "wires",
+}
+# identity keys are checked in this order -- specific "<thing>_id/Id" tokens
+# come before the generic "name" so that e.g. an element carrying both
+# {"component_id": "ui", "name": "UI"} uses "ui" as its id.
+_ID_KEYS = [
+    "id", "_id",
+    "node_id", "nodeId", "component_id", "componentId", "element_id",
+    "elementId", "shape_id", "shapeId", "object_id", "objectId",
+    "vertex_id", "vertexId", "item_id", "itemId", "entity_id", "entityId",
+    "block_id", "blockId", "box_id", "boxId", "actor_id", "actorId",
+    "source_id", "sourceId", "target_id", "targetId",
+    "key", "uuid", "uid", "code", "name",
+]
+_LABEL_KEYS = ["label", "text", "title", "name", "caption", "text_content",
+               "display_name", "displayText", "label_text", "heading"]
+_TYPE_KEYS = ["type", "kind", "category", "role", "node_type", "class",
+              "subtype", "shape"]
+_ENDPOINT_PAIRS = [
+    ("from", "to"),
+    ("source", "target"),
+    ("src", "dst"),
+    ("fromId", "toId"),
+    ("from_id", "to_id"),
+    ("sourceId", "targetId"),
+    ("source_id", "target_id"),
+    ("fromNode", "toNode"),
+    ("from_node", "to_node"),
+    ("tail", "head"),
+    ("start", "end"),
+    ("startId", "endId"),
+    ("a", "b"),
+    ("u", "v"),
+    ("one", "two"),
+]
+_NEST_CONTAINERS = ["properties", "attrs", "attributes", "data", "content",
+                    "item", "value", "meta"]
+_PALETTE = ["#5B9BD5", "#70AD47", "#ED7D31", "#7030A0", "#FFC000",
+            "#00B0F0", "#C00000", "#A5A5A5", "#2E75B6", "#548235",
+            "#BF8F00", "#C55A11"]
+
+
+def _is_scalar(v):
+    return isinstance(v, (str, int, float)) and not isinstance(v, bool)
+
+
+def _containers(elem):
+    """Yield sub-dicts that may carry the real fields of an element."""
+    out = []
+    for v in elem.values():
+        if isinstance(v, dict):
+            out.append(v)
+    return out
+
+
+def _deep_get(elem, keys):
+    """Return first value found for any of keys, searching the element and one
+    nesting level of well-known container keys."""
+    for k in keys:
+        if k in elem and _is_scalar(elem[k]) or (k in elem and elem[k] is not None
+                                                 and not isinstance(elem[k], (dict, list))):
+            return elem[k]
+    for c in _containers(elem):
+        for k in keys:
+            if k in c:
+                v = c[k]
+                if _is_scalar(v) or v is None:
+                    return v
+    return None
+
+
+def _collect_arrays(root):
+    """Yield every non-empty list whose items are dicts."""
+    found = []
+
+    def walk(o):
+        if isinstance(o, list):
+            if o and all(isinstance(x, dict) for x in o):
+                found.append(o)
+            for x in o:
+                walk(x)
+        elif isinstance(o, dict):
+            for v in o.values():
+                walk(v)
+    walk(root)
+    return found
+
+
+def _has_identity_keys(elem):
+    for k in _ID_KEYS:
+        if k in elem:
+            return True
+    for c in _containers(elem):
+        for k in _ID_KEYS:
+            if k in c:
+                return True
+    return False
+
+
+def _has_label_keys(elem):
+    for k in _LABEL_KEYS:
+        if k in elem:
+            return True
+    for c in _containers(elem):
+        for k in _LABEL_KEYS:
+            if k in c:
+                return True
+    return False
+
+
+def _node_score(arr):
+    """How 'node-like' is this array of dicts?"""
+    total = 0.0
+    n = 0
+    for e in arr:
+        if not isinstance(e, dict):
+            continue
+        n += 1
+        if _has_identity_keys(e):
+            total += 2.0
+        if _has_label_keys(e):
+            total += 1.5
+    return total / max(n, 1), n
+
+
+def _pick_node_array(data, arrays):
+    best, best_score, best_n = None, -1, -1
+    # try key-name hints first (strongest)
+    def containers_named(d, names):
+        found = []
+        for k, v in d.items():
+            if k in names and isinstance(v, list) and v:
+                found.append(v)
+        return found
+    hinted = containers_named(data, _GRAPH_HINT) + containers_named(
+        data, {"nodes", "node"})
+    for arr in hinted:
+        score, n = _node_score(arr)
+        if score > 0 and (score > best_score or (score == best_score and n > best_n)):
+            best, best_score, best_n = arr, score, n
+    if best is not None:
+        return best
+    # fall back to best structural score, de-prioritising arrays whose members
+    # mostly *reference* other ids (those are edge arrays, not node arrays)
+    for arr in arrays:
+        score, n = _node_score(arr)
+        if score > 0 and (score > best_score or (score == best_score and n > best_n)):
+            best, best_score, best_n = arr, score, n
+    return best
+
+
+def _resolve_endpoints(elem, universe):
+    """Return up to 2 endpoint values (as strings) that appear in universe."""
+    found = []
+    # explicit named pairs get priority
+    for fk, tk in _ENDPOINT_PAIRS:
+        if fk in elem and tk in elem:
+            fv, tv = str(elem[fk]), str(elem[tk])
+            if fv in universe:
+                found.append(fv)
+            if tv in universe:
+                found.append(tv)
+            if len(found) >= 2:
+                return found[:2]
+    # generic: collect keys whose scalar value is in universe
+    cand = []
+    for k, v in elem.items():
+        if _is_scalar(v) and str(v) in universe:
+            cand.append(str(v))
+    # nested containers
+    for c in _containers(elem):
+        for k, v in c.items():
+            if _is_scalar(v) and str(v) in universe and str(v) not in cand:
+                cand.append(str(v))
+    if len(cand) >= 2:
+        return cand[:2]
+    return found[:2]
+
+
+def _pick_edge_array(data, arrays, node_arr, universe):
+    if node_arr is None or not universe:
+        return None
+    hinted = []
+    def named(d, names):
+        out = []
+        for k, v in d.items():
+            if k in names and isinstance(v, list) and v:
+                out.append(v)
+        return out
+    hinted = named(data, _EDGE_HINT)
+    best, best_score = None, -1
+    for arr in hinted + arrays:
+        if arr is node_arr:
+            continue
+        if not arr or not all(isinstance(x, dict) for x in arr):
+            continue
+        hits = sum(1 for e in arr if len(_resolve_endpoints(e, universe)) >= 2)
+        score = hits / len(arr)
+        if score > 0 and score > best_score:
+            best, best_score = arr, score
+    return best
+
+
+def _edge_label(elem):
+    """Fallback label for an edge: the first short scalar string that is not one
+    of the two endpoint references (e.g. a 'description' / 'protocol' field)."""
+    vals = []
+    for k, v in elem.items():
+        if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+            continue
+        if k.lower() in ("from", "to", "source", "target", "src", "dst",
+                         "fromid", "toid", "sourceid", "targetid"):
+            continue
+        s = str(v).strip()
+        if s and len(s) <= 60:
+            vals.append((k, s))
+    for c in _containers(elem):
+        for k, v in c.items():
+            if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+                continue
+            s = str(v).strip()
+            if s and len(s) <= 60:
+                vals.append((k, s))
+    # prefer string-looking values over pure numbers for a readable label
+    def pick(entry):
+        k, s = entry
+        try:
+            float(s)
+            return 1  # numeric, less useful as a label
+        except ValueError:
+            return 0
+    if vals:
+        vals.sort(key=pick)
+        return vals[0][1]
+    return None
+
+
+def _meta(root):
+    title = _deep_get(root, ["title", "name", "heading", "caption",
+                             "diagram_name", "label"])
+    desc = _deep_get(root, ["description", "desc", "subtitle", "notes"])
+    page = _deep_get(root, ["page", "page_name", "canvas"]) 
+    return {
+        "title": str(title) if title is not None else "Diagram",
+        "description": str(desc) if desc is not None else "",
+        "page_name": str(page) if page is not None else "Page-1",
+    }
+
+
+def _get_xy(elem):
+    """Extract numeric x/y/width/height if present (either directly or nested)."""
+    out = {}
+    for key in ("x", "y", "width", "height", "w", "h"):
+        if key in elem and isinstance(elem[key], (int, float)) and \
+                not isinstance(elem[key], bool):
+            out[key] = float(elem[key])
+    for c in _containers(elem):
+        for key in ("x", "y", "width", "height"):
+            if key in c and isinstance(c[key], (int, float)):
+                out[key] = float(c[key])
+    return out
+
+
+def _unwrap_element(elem):
+    """If an element is a thin wrapper like {'data': {...real...}}, treat the
+    nested dict as the element (merged over the wrapper's scalar fields)."""
+    if not isinstance(elem, dict):
+        return elem
+    for c in _containers(elem):
+        if isinstance(c, dict) and _has_identity_keys(c):
+            merged = {k: v for k, v in elem.items()
+                      if not isinstance(v, dict)}
+            merged.update(c)
+            return merged
+    return elem
+
+
+def _analyse_any(data):
+    """Structural analysis of arbitrary JSON -> standard {document, pages}."""
+    # tolerate top-level wrapper / single-element list
+    while isinstance(data, list) and len(data) == 1:
+        data = data[0]
     if isinstance(data, list):
-        if len(data) == 1:
-            data = data[0]
-        else:
-            # maybe it's already our list-of-pages form but missing wrapper
-            raise ValueError("JSON is a top-level array; expected an object "
-                             "with 'pages' or 'nodes'.")
+        # maybe it's a list of node objects directly
+        data = {"_items": data}
     if not isinstance(data, dict):
-        raise ValueError("JSON must decode to an object (a {...}), got "
-                         f"{type(data).__name__}.")
-    # unwrap a single extra level if the actual content is nested under one key
-    if "pages" not in data and "nodes" not in data:
-        for v in data.values():
-            if isinstance(v, dict) and ("pages" in v or "nodes" in v):
-                data = v
-                break
-    return data
+        raise ValueError(
+            f"JSON root must be an object/array; got {type(data).__name__}.")
+
+    arrays = _collect_arrays(data)
+    arrays = [a for a in arrays if a]  # non-empty
+    if not arrays:
+        raise ValueError("No arrays of objects found in the JSON, so there is "
+                         "nothing to draw.")
+
+    node_arr = _pick_node_array(data, arrays)
+    if node_arr is None:
+        raise ValueError("Could not find a list of node/component objects in "
+                         "the JSON (nothing has an id/name/label).")
+
+    # node universe
+    universe = set()
+    node_objs = []
+    for e in node_arr:
+        if not isinstance(e, dict):
+            continue
+        e = _unwrap_element(e)
+        _id = _deep_get(e, _ID_KEYS)
+        if _id is None:
+            continue
+        _id = str(_id)
+        label = _deep_get(e, _LABEL_KEYS)
+        ntype = _deep_get(e, _TYPE_KEYS)
+        geom = _get_xy(e)
+        universe.add(_id)
+        node_objs.append({
+            "id": _id,
+            "label": str(label) if label is not None else _id,
+            "type": str(ntype) if ntype is not None else "",
+            "geom": geom,
+        })
+
+    edge_arr = _pick_edge_array(data, arrays, node_arr, universe)
+    edges = []
+    if edge_arr is not None:
+        for e in edge_arr:
+            if not isinstance(e, dict):
+                continue
+            eps = _resolve_endpoints(e, universe)
+            if len(eps) < 2:
+                continue
+            lab = _deep_get(e, _LABEL_KEYS)
+            if lab is None:
+                lab = _edge_label(e)
+            edges.append({"from": eps[0], "to": eps[1],
+                          "label": str(lab) if lab is not None else ""})
+
+    if not node_objs:
+        raise ValueError("No node objects with an id could be extracted.")
+    if not edges:
+        print("Note: no inter-node links (edges) detected; drawing nodes only.")
+
+    # If every node has explicit geometry, honour it; otherwise auto-layout.
+    has_geom = all("x" in n["geom"] and "y" in n["geom"] for n in node_objs)
+    meta = _meta(data)
+    if has_geom:
+        return _build_pages_manual(node_objs, edges, meta)
+    # feed the generic auto-layout (reuses colour-by-type logic)
+    return _auto_layout_simple({
+        "diagram": meta,
+        "nodes": [{"id": n["id"], "label": n["label"], "type": n["type"]}
+                  for n in node_objs],
+        "connections": [{"from": e["from"], "to": e["to"],
+                         "label": e["label"]} for e in edges],
+    })
 
 
-def _normalise_json(data: dict) -> dict:
-    """Accept either the standard {document, pages} schema or the simpler
-    {diagram, nodes, connections} schema."""
-    data = _find_schema_dict(data)
-    if "pages" in data:
+def _build_pages_manual(node_objs, edges, meta):
+    """Use provided node geometry to build pages, sizing the page to fit."""
+    margin = 0.6
+    shapes = []
+    for idx, n in enumerate(node_objs):
+        g = n["geom"]
+        w = g.get("width", g.get("w", 2.6))
+        h = g.get("height", g.get("h", 1.15))
+        fill = _color_for_type(n["type"], idx)
+        text_color = "#000000" if _luminance(fill) > 160 else "#FFFFFF"
+        shapes.append({
+            "id": n["id"], "type": "rectangle", "text": n["label"],
+            "x": float(g["x"]), "y": float(g["y"]),
+            "width": float(w), "height": float(h),
+            "fill_color": fill, "line_color": _darker(fill),
+            "text_color": text_color, "font_size": 12,
+        })
+    # find bounding box for page size
+    minx = min(s["x"] - s["width"] / 2 for s in shapes)
+    maxx = max(s["x"] + s["width"] / 2 for s in shapes)
+    miny = min(s["y"] - s["height"] / 2 for s in shapes)
+    maxy = max(s["y"] + s["height"] / 2 for s in shapes)
+    page_w = max((maxx - minx) + 2 * margin, 3.0)
+    page_h = max((maxy - miny) + 2 * margin, 3.0)
+    if minx < 0 or miny < 0 or abs(maxx - minx) > page_w * 1.5:
+        # shift coordinates into positive page space if they go negative
+        ox, oy = max(-minx + margin, 0), max(-miny + margin, 0)
+        for s in shapes:
+            s["x"] += ox
+            s["y"] += oy
+    connectors = [{
+        "from_shape_id": e["from"], "to_shape_id": e["to"], "label": e["label"],
+        "line_color": "#595959", "line_weight": 1.25,
+    } for e in edges]
+    return {
+        "document": meta,
+        "pages": [{
+            "name": meta["page_name"], "width": round(page_w, 3),
+            "height": round(page_h, 3), "shapes": shapes,
+            "connectors": connectors,
+        }],
+    }
+
+
+def _color_for_type(ntype, idx):
+    t = str(ntype).lower().strip()
+    if t in _TYPE_COLORS:
+        return _TYPE_COLORS[t]
+    return _PALETTE[idx % len(_PALETTE)]
+
+
+def _normalise_json(data):
+    """Turn *any* JSON diagram description into our standard {document,pages}
+    shape.  The full schema is passed through; everything else is analysed
+    structurally."""
+    # handle a JSON string that arrived pre-decoded
+    if isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict):
+        if "pages" in data[0] or "nodes" in data[0] or "components" in data[0]:
+            data = data[0]
+    if isinstance(data, dict) and "pages" in data:
         return data
-    if "nodes" in data:
-        return _auto_layout_simple(data)
-
-    keys = ", ".join(repr(k) for k in data.keys()) or "(none)"
-    raise ValueError(
-        "Unrecognised JSON schema.\n"
-        f"Top-level keys found: {keys}\n\n"
-        "The file must be an object containing EITHER:\n"
-        "  \"pages\": [...]   (full schema, with shapes & connectors)\n"
-        "  \"nodes\": [...]   (simple schema: labelled nodes + connections)\n\n"
-        "If you just pasted JSON from chat, make sure the file really starts "
-        "with '{' and contains one of those keys, then try again.")
+    return _analyse_any(data)
 
 
 # ---------------------------------------------------------------------------
@@ -978,13 +1373,10 @@ def create_visio_from_json(json_input, output_file="output.vsdx"):
         print(f"Parsed JSON as {type(json_data).__name__} "
               f"(expected a dict/object).")
 
-    # Accept either the standard schema or the simple {nodes, connections}
-    # schema (auto-laid-out).
-    was_simple = isinstance(json_data, dict) and "nodes" in json_data
+    # The universal normaliser accepts the full {pages} schema directly, and
+    # structurally analyses any other JSON into node/edge form for auto-layout.
     json_data = _normalise_json(json_data)
-    if was_simple:
-        print("Detected simple 'nodes/connections' schema -> auto-laid out "
-              "diagram.")
+    print("Normalised JSON -> standard schema for rendering.")
 
     validate_json(json_data)
 
