@@ -30,11 +30,31 @@ The reader looks for the *structure*, not fixed names, so these all work:
 
 // 3) full schema (already laid out, coords honoured)
 { "document": {...}, "pages": [{"name":"P","shapes":[...],"connectors":[...]}] }
+
+// 4) hierarchical: containers (zones/vnets/tiers) that nest + contain nodes
+{ "boundaries":[ {"id":"VNET","label":"Private network","parent":null},
+                 {"id":"APP","label":"Application tier","parent":"VNET"} ],
+  "components":[ {"id":"web","label":"Web app","shape":"service","boundary":"APP"} ],
+  "flows":     [ {"from":"web","to":"api","protocol":"HTTPS 443"} ] }
 ```
 
 It detects each node's *label*, an optional *type* (used to pick a colour), and
 optional *x / y / width / height*. When coordinates are absent it lays the
 diagram out left-to-right; when present it honours them.
+
+### Grouped / container diagrams (shape 4)
+If the JSON also has a list of **containers** (`boundaries` of zones, `vnet` /
+`subnet` / `tier` objects) and the nodes point to their container via a
+`boundary` / `zone` / `container` / … field, the generator draws each container
+as a labelled region and places its nodes *inside* it. Nested containers
+(e.g. `APP` subnet inside the `VNET`) become boxes-within-boxes:
+
+```bash
+python visio_generator.py actual_arch.json tax_bridge.vsdx
+```
+
+Edge labels fall back to the transport (`protocol`) when no `label` is set, and
+a flow may start from a whole container (e.g. a subnet → Log Analytics flow).
 
 ## Files
 
@@ -44,6 +64,8 @@ diagram out left-to-right; when present it honours them.
 | `network_diagram.json` | Example input: a small network topology. |
 | `input.json` | Example input: the built-in sample architecture diagram. |
 | `output.vsdx` | `output.vsdx` generated from `network_diagram.json`. |
+| `actual_arch.json` | Example: `boundaries` (zones/vnets/subnets) + `components` + `flows`. |
+| `tax_bridge.vsdx` | Grouped `.vsdx` generated from `actual_arch.json`. |
 
 > **How it works.** A `.vsdx` file is a ZIP archive that follows the Open
 > Packaging Convention.  Most of it is XML that Visio writes once and that is

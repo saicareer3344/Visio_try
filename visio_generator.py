@@ -703,6 +703,10 @@ _TYPE_COLORS = {
     "process": "#ED7D31", "agent": "#ED7D31", "service": "#ED7D31",
     "worker": "#ED7D31", "function": "#ED7D31",
     "ai": "#7030A0", "llm": "#7030A0", "model": "#7030A0", "ml": "#7030A0",
+    # generic component vocabulary (used by architecture / threat-model JSON)
+    "actor": "#4472C4", "service": "#70AD47", "datastore": "#FFC000",
+    "compute": "#2E75B6", "endpoint": "#2E75B6", "function": "#ED7D31",
+    "worker": "#ED7D31",
     "database": "#FFC000", "db": "#FFC000", "storage": "#FFC000",
     "sql": "#FFC000", "postgres": "#FFC000",
     "gateway": "#2E75B6", "api": "#2E75B6", "proxy": "#2E75B6",
@@ -906,6 +910,29 @@ _NEST_CONTAINERS = ["properties", "attrs", "attributes", "data", "content",
 _PALETTE = ["#5B9BD5", "#70AD47", "#ED7D31", "#7030A0", "#FFC000",
             "#00B0F0", "#C00000", "#A5A5A5", "#2E75B6", "#548235",
             "#BF8F00", "#C55A11"]
+
+# ---- hierarchical / grouped diagrams --------------------------------------
+# A diagram may be described as *containers* (zones / vnets / subnets / tiers)
+# that nest and contain the actual nodes.  These key names let us recognise:
+#   * which fields on a node point at its parent container
+#   * which fields on a container point at its parent container
+#   * which array names are treated as a container list (weaker than a real
+#     structural hint but useful when the user has named it "boundaries").
+_CONTAINER_REF_KEYS = [
+    "boundary", "boundaries", "container", "container_id", "group", "zone",
+    "area", "region", "domain", "layer", "partition", "subnet", "vnet",
+    "scope", "locatedIn", "located_in", "within", "belongsTo", "parent_id",
+    "placement",
+]
+_CONTAINER_HINT = {
+    "boundaries", "boundary", "containers", "groups", "zones", "areas",
+    "regions", "domains", "layers", "partitions", "scopes", "tiers", "nets",
+    "vnets",
+}
+# A container array is *also* a hierarchy when its own entries point at each
+# other through any of these keys.
+_CONTAINER_PARENT_KEYS = ["parent", "parent_id", "parentId", "container",
+                          "container_id", "inside", "subLayerOf"]
 
 
 def _is_scalar(v):
@@ -1143,6 +1170,310 @@ def _unwrap_element(elem):
     return elem
 
 
+def _container_ref_of(elem):
+    """Which container (boundary/zone/subnet/...) does this node sit in?"""
+    for k in _CONTAINER_REF_KEYS:
+        if k in elem:
+            v = elem[k]
+            if v is None:
+                continue
+            if isinstance(v, (str, int, float)) and not isinstance(v, bool):
+                return str(v)
+    for c in _containers(elem):
+        for k in _CONTAINER_REF_KEYS:
+            if k in c:
+                v = c[k]
+                if isinstance(v, (str, int, float)) and not isinstance(v, bool):
+                    return str(v)
+    return None
+
+
+def _container_parent_of(elem):
+    """If this container is nested, which container is its parent?"""
+    for k in _CONTAINER_PARENT_KEYS:
+        if k in elem:
+            v = elem[k]
+            if v is None:
+                continue
+            if isinstance(v, (str, int, float)) and not isinstance(v, bool):
+                return str(v)
+    for c in _containers(elem):
+        for k in _CONTAINER_PARENT_KEYS:
+            if k in c:
+                v = c[k]
+                if isinstance(v, (str, int, float)) and not isinstance(v, bool):
+                    return str(v)
+    return None
+
+
+def _elem_id(e):
+    v = _deep_get(e, _ID_KEYS)
+    return str(v) if v is not None else None
+
+
+def _pick_container_array(data, arrays, node_elems):
+    """Among the arrays that are NOT the node list / edge list, is there one
+    acting as *containers* (zones/boundaries/subnets/tiers)?  Two signals:
+      * several nodes carry a container-reference pointing at ids in it, or
+      * its own entries reference each other as a parent (a hierarchy)."""
+    refs = []
+    for n in node_elems:
+        r = _container_ref_of(n)
+        if r:
+            refs.append(r)
+    best, best_score = None, -1
+    for arr in arrays:
+        idset = {_elem_id(x) for x in arr if isinstance(x, dict)}
+        idset.discard(None)
+        if not idset:
+            continue
+        nr = sum(1 for r in refs if r in idset)          # nodes pointing into it
+        sh = sum(1 for x in arr if isinstance(x, dict)
+                 and _container_parent_of(x) in idset)   # self-hierarchy
+        score = nr * 2.0 + sh * 1.0
+        if score > best_score:
+            best, best_score = arr, score
+    return best if best_score > 0 else None
+
+
+# keys never shown as an auto edge label
+_EDGE_NOISE_KEYS = frozenset({
+    "from", "to", "source", "target", "src", "dst", "fromid", "toid",
+    "sourceid", "targetid", "from_id", "to_id", "source_id", "target_id",
+    "id", "kind", "type", "category", "subtype", "step", "seq", "order",
+    "index", "direction", "weight", "priority", "status", "enabled",
+    "bidirectional", "style",
+})
+
+
+def _edge_label_prefer(elem):
+    """Best readable label for an edge: explicit label/name, else transport
+    (protocol/via/method), else the first short non-numeric scalar that is not
+    structural noise.  Never falls back to something like ``primary``."""
+    for k in ("label", "name", "text", "title", "caption", "description",
+              "protocol", "transport", "via", "method", "action", "operation",
+              "event", "verb", "endpoint"):
+        v = _deep_get(elem, [k])
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s and s.lower() != "none":
+            return s
+    vals = []
+
+    def scan(o):
+        for c in (o, *_containers(o)):
+            for k, val in c.items():
+                if isinstance(val, bool) or not isinstance(val,
+                                                           (str, int, float)):
+                    continue
+                kl = str(k).lower()
+                if kl in _EDGE_NOISE_KEYS:
+                    continue
+                s = str(val).strip()
+                if s and len(s) <= 60:
+                    vals.append((k, s))
+
+    scan(elem)
+    for k, s in vals:
+        try:
+            float(s)
+        except ValueError:
+            return s
+    return None
+
+
+# ---- layout constants for grouped/container diagrams (inches) ------------
+_G_HEAD = 0.5       # container title-bar height
+_G_PAD = 0.42       # container inner padding around its content
+_G_NODE_H = 0.62    # node box height
+_G_SIB = 0.5        # gap between siblings inside a container row
+_G_ROW = 0.5        # vertical gap between stacked rows
+_G_OUT = 1.35       # gap between top-level boxes (room for arrowheads+labels)
+_G_MARGIN = 0.6
+
+
+def _node_width(text):
+    return 0.6 + 0.082 * len(text)
+
+
+def _build_pages_grouped(node_objs, cont_elems, edges, meta):
+    """Render a hierarchy of *containers* (zones/subnets/tiers) that nest and
+    enclose the real nodes, then draw connectors between the shapes."""
+    cont_map = {}
+    order = []
+    for c in cont_elems:
+        cont_map[c["id"]] = {
+            "id": c["id"], "label": c["label"], "parent": c["parent"],
+            "children": [], "nodes": [],
+        }
+        order.append(c["id"])
+    node_by_id = {}
+    standalone = []
+    for n in node_objs:
+        node_by_id[n["id"]] = n
+        pid = n.get("container")
+        if pid in cont_map:
+            cont_map[pid]["nodes"].append(n)
+        else:
+            standalone.append(n)
+
+    for cid in order:
+        p = cont_map[cid]["parent"]
+        if p in cont_map and p != cid:
+            cont_map[p]["children"].append(cid)
+
+    node_size = {n["id"]: (_node_width(n["label"]), _G_NODE_H)
+                 for n in node_objs}
+    cgeom = {}
+
+    def item_size(kind, iid):
+        return node_size[iid] if kind == "node" else (cgeom[iid]["w"],
+                                                      cgeom[iid]["h"])
+
+    def row_metrics(items):
+        w = sum(item_size(k, i)[0] for k, i in items)
+        h = max((item_size(k, i)[1] for k, i in items), default=0)
+        if len(items) > 1:
+            w += _G_SIB * (len(items) - 1)
+        return w, h
+
+    def measure(cid):
+        cm = cont_map[cid]
+        rows = []
+        if cm["children"]:
+            for ch in cm["children"]:
+                measure(ch)
+            rows.append({"items": [("cont", c) for c in cm["children"]]})
+        if cm["nodes"]:
+            rows.append({"items": [("node", n["id"]) for n in cm["nodes"]]})
+        content_w = 0.0
+        for r in rows:
+            r["w"], r["h"] = row_metrics(r["items"])
+            content_w = max(content_w, r["w"])
+        content_h = (sum(r["h"] for r in rows)
+                     + _G_ROW * (len(rows) - 1)) if rows else 0.0
+        title_w = _node_width(cm["label"])
+        w = max(content_w, title_w) + 2 * _G_PAD
+        h = _G_HEAD + _G_PAD + content_h + _G_PAD
+        cgeom[cid] = {"w": w, "h": h, "rows": rows, "title_w": title_w}
+        return w, h
+
+    bg_shapes = []          # container backgrounds + title bars (behind nodes)
+    node_shapes = []        # actual component boxes
+    node_rect = {}          # nid -> (cx, cy, w, h)
+    bg_rect = {}            # container id -> (x0, y0, w, h) top-left
+    root_cids = [cid for cid in order if cont_map[cid]["parent"] not in cont_map]
+
+    def place_node(nid, x0, y0):
+        w, h = node_size[nid]
+        node_rect[nid] = (x0 + w / 2.0, y0 + h / 2.0, w, h)
+
+    def place_container(cid, x0, y0):
+        cm = cont_map[cid]
+        g = cgeom[cid]
+        w, h = g["w"], g["h"]
+        bg_rect[cid] = (x0, y0, w, h)
+        inner_w = w - 2 * _G_PAD
+        yy = y0 + _G_HEAD + _G_PAD
+        for row in g["rows"]:
+            xx = x0 + _G_PAD + (inner_w - row["w"]) / 2.0
+            for kind, iid in row["items"]:
+                if kind == "node":
+                    place_node(iid, xx, yy)
+                    xx += node_size[iid][0] + _G_SIB
+                else:
+                    place_container(iid, xx, yy)
+                    xx += cgeom[iid]["w"] + _G_SIB
+            yy += row["h"] + _G_ROW
+
+    # Build background shapes in pre-order (outermost first) so nesting paints
+    # correctly, then collect them into bg_shapes.
+    def emit_container(cid):
+        x0, y0, w, h = bg_rect[cid]
+        cm = cont_map[cid]
+        fill = "#EAF1FB"
+        line = "#8FB4E5"
+        bg_shapes.append({
+            "id": cid, "type": "rectangle", "text": "",
+            "x": x0 + w / 2.0, "y": y0 + h / 2.0, "width": w, "height": h,
+            "fill_color": fill, "line_color": line,
+            "text_color": "#000000", "font_size": 8,
+        })
+        # title bar
+        tw = max(w - 0.1, 0.5)
+        bg_shapes.append({
+            "id": cid + "_hdr", "type": "rectangle",
+            "text": cm["label"],
+            "x": x0 + w / 2.0, "y": y0 + _G_HEAD / 2.0,
+            "width": tw, "height": _G_HEAD,
+            "fill_color": "#2E75B6", "line_color": "#2E75B6",
+            "text_color": "#FFFFFF", "font_size": 10,
+        })
+        for ch in cont_map[cid]["children"]:
+            emit_container(ch)
+
+    # --- top-level placement ------------------------------------------------
+    top_items = [("node", n["id"]) for n in standalone] + \
+                [("cont", cid) for cid in root_cids]
+    for cid in root_cids:
+        measure(cid)
+
+    x0 = _G_MARGIN
+    ytop = _G_MARGIN
+    max_h = 0.0
+    for kind, iid in top_items:
+        if kind == "cont":
+            place_container(iid, x0, ytop)
+            w, h = cgeom[iid]["w"], cgeom[iid]["h"]
+        else:
+            place_node(iid, x0, ytop)
+            w, h = node_size[iid]
+        x0 += w + _G_OUT
+        max_h = max(max_h, h)
+    page_w = x0 - _G_OUT + _G_MARGIN
+    page_h = _G_MARGIN + max_h + _G_MARGIN
+
+    # backgrounds in draw order: recurse into each root container
+    for cid in root_cids:
+        emit_container(cid)
+
+    # --- node boxes ---------------------------------------------------------
+    for idx, n in enumerate(node_objs):
+        nid = n["id"]
+        cx, cy, w, h = node_rect[nid]
+        fill = _color_for_type(n["type"], idx)
+        tc = "#000000" if _luminance(fill) > 160 else "#FFFFFF"
+        node_shapes.append({
+            "id": nid, "type": "rectangle", "text": n["label"],
+            "x": cx, "y": cy, "width": w, "height": h,
+            "fill_color": fill, "line_color": _darker(fill),
+            "text_color": tc, "font_size": 9,
+        })
+
+    shapes = bg_shapes + node_shapes
+
+    # --- connectors (nodes OR containers as endpoints) ----------------------
+    conn_shape_ids = {s["id"] for s in shapes}
+    connectors = []
+    for e in edges:
+        if e["from"] not in conn_shape_ids or e["to"] not in conn_shape_ids:
+            continue
+        connectors.append({
+            "from_shape_id": e["from"], "to_shape_id": e["to"],
+            "label": e["label"], "line_color": "#7F7F7F", "line_weight": 1.0,
+        })
+
+    return {
+        "document": meta,
+        "pages": [{
+            "name": meta["page_name"], "width": round(page_w, 3),
+            "height": round(page_h, 3), "shapes": shapes,
+            "connectors": connectors,
+        }],
+    }
+
+
 def _analyse_any(data):
     """Structural analysis of arbitrary JSON -> standard {document, pages}."""
     # tolerate top-level wrapper / single-element list
@@ -1166,9 +1497,10 @@ def _analyse_any(data):
         raise ValueError("Could not find a list of node/component objects in "
                          "the JSON (nothing has an id/name/label).")
 
-    # node universe
-    universe = set()
+    # node universe (also records each node's parent container, if any)
+    node_elems = []
     node_objs = []
+    node_ids = set()
     for e in node_arr:
         if not isinstance(e, dict):
             continue
@@ -1180,37 +1512,70 @@ def _analyse_any(data):
         label = _deep_get(e, _LABEL_KEYS)
         ntype = _deep_get(e, _TYPE_KEYS)
         geom = _get_xy(e)
-        universe.add(_id)
+        node_elems.append(e)
+        node_ids.add(_id)
         node_objs.append({
             "id": _id,
             "label": str(label) if label is not None else _id,
             "type": str(ntype) if ntype is not None else "",
             "geom": geom,
+            "container": _container_ref_of(e),
         })
 
-    edge_arr = _pick_edge_array(data, arrays, node_arr, universe)
+    # optional container list (zones / subnets / tiers / boundaries)
+    cont_arr = _pick_container_array(data, arrays, node_elems)
+    cont_elems = []
+    if cont_arr is not None:
+        seen = set()
+        for e in cont_arr:
+            if not isinstance(e, dict):
+                continue
+            e = _unwrap_element(e)
+            cid = _elem_id(e)
+            if cid is None or cid in seen:
+                continue
+            seen.add(cid)
+            lab = _deep_get(e, _LABEL_KEYS)
+            cont_elems.append({
+                "id": cid,
+                "label": str(lab) if lab is not None else cid,
+                "parent": _container_parent_of(e),
+            })
+
+    # edges may connect nodes *or* containers (e.g. a whole subnet emitting a
+    # telemetry flow), so the endpoint universe includes container ids too.
+    draw_ids = set(node_ids)
+    for c in cont_elems:
+        draw_ids.add(c["id"])
+
+    edge_arr = _pick_edge_array(data, arrays, node_arr, draw_ids)
     edges = []
     if edge_arr is not None:
         for e in edge_arr:
             if not isinstance(e, dict):
                 continue
-            eps = _resolve_endpoints(e, universe)
+            eps = _resolve_endpoints(e, draw_ids)
             if len(eps) < 2:
                 continue
-            lab = _deep_get(e, _LABEL_KEYS)
-            if lab is None:
-                lab = _edge_label(e)
+            lab = _edge_label_prefer(e)
             edges.append({"from": eps[0], "to": eps[1],
-                          "label": str(lab) if lab is not None else ""})
+                          "label": lab or ""})
 
     if not node_objs:
         raise ValueError("No node objects with an id could be extracted.")
+
+    meta = _meta(data)
+
+    # A hierarchy of containers is the primary layout signal -- it groups the
+    # diagram into labelled, nested regions instead of one flat line of boxes.
+    if cont_elems:
+        return _build_pages_grouped(node_objs, cont_elems, edges, meta)
+
     if not edges:
         print("Note: no inter-node links (edges) detected; drawing nodes only.")
 
     # If every node has explicit geometry, honour it; otherwise auto-layout.
     has_geom = all("x" in n["geom"] and "y" in n["geom"] for n in node_objs)
-    meta = _meta(data)
     if has_geom:
         return _build_pages_manual(node_objs, edges, meta)
     # feed the generic auto-layout (reuses colour-by-type logic)

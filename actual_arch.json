@@ -1,0 +1,39 @@
+{
+  "boundaries": [
+    {"id":"EDGE","label":"Public edge - WAF gateway","kind":"zone","cidr":null,"parent":null},
+    {"id":"VNET","label":"Private application network","kind":"vnet","cidr":null,"parent":null},
+    {"id":"APP","label":"Application tier","kind":"subnet","cidr":null,"parent":"VNET"},
+    {"id":"DATA","label":"Data and processing tier","kind":"subnet","cidr":null,"parent":"VNET"},
+    {"id":"SEC","label":"Identity and secrets","kind":"tier","cidr":null,"parent":null},
+    {"id":"OPS","label":"Monitoring and audit operations","kind":"tier","cidr":null,"parent":null}
+  ],
+  "components": [
+    {"id":"users","label":"Clients and EY professionals","azureType":"external/users","tier":"external","shape":"actor","boundary":null},
+    {"id":"agw","label":"Tax Bridge WAF gateway","azureType":"microsoft.network/applicationgateways","tier":"network","shape":"gateway","boundary":"EDGE"},
+    {"id":"idp","label":"Microsoft Entra ID","azureType":"microsoft.entra/directory","tier":"security","shape":"service","boundary":"SEC"},
+    {"id":"web","label":"Tax Bridge React web app","azureType":"microsoft.web/sites","tier":"application","shape":"service","boundary":"APP"},
+    {"id":"api","label":"Tax Bridge .NET API","azureType":"microsoft.web/sites","tier":"application","shape":"service","boundary":"APP"},
+    {"id":"worker","label":"Python processing functions","azureType":"microsoft.web/sites/functions","tier":"application","shape":"service","boundary":"APP"},
+    {"id":"queue","label":"Processing Service Bus","azureType":"microsoft.servicebus/namespaces","tier":"application","shape":"queue","boundary":"DATA"},
+    {"id":"blob","label":"Document and output storage","azureType":"microsoft.storage/storageaccounts","tier":"data","shape":"datastore","boundary":"DATA"},
+    {"id":"sql","label":"Tax Bridge SQL database","azureType":"microsoft.sql/servers/databases","tier":"data","shape":"datastore","boundary":"DATA"},
+    {"id":"docai","label":"Document Intelligence","azureType":"microsoft.cognitiveservices/accounts","tier":"application","shape":"service","boundary":"DATA"},
+    {"id":"keyvault","label":"Secrets and encryption keys","azureType":"microsoft.keyvault/vaults","tier":"security","shape":"datastore","boundary":"SEC"},
+    {"id":"law","label":"Audit and diagnostic logs","azureType":"microsoft.operationalinsights/workspaces","tier":"operations","shape":"datastore","boundary":"OPS"}
+  ],
+  "flows": [
+    {"from":"users","to":"agw","kind":"primary","step":1,"protocol":"HTTPS 443","label":null},
+    {"from":"agw","to":"web","kind":"primary","step":2,"protocol":"HTTPS 443","label":null},
+    {"from":"web","to":"api","kind":"primary","step":3,"protocol":"HTTPS 443","label":null},
+    {"from":"web","to":"idp","kind":"auth","step":null,"protocol":"HTTPS 443","label":"sign in"},
+    {"from":"api","to":"queue","kind":"primary","step":4,"protocol":"HTTPS 443","label":"enqueue job"},
+    {"from":"worker","to":"queue","kind":"primary","step":5,"protocol":"HTTPS 443","label":"dequeue job"},
+    {"from":"worker","to":"docai","kind":"primary","step":6,"protocol":"HTTPS 443","label":"extract fields"},
+    {"from":"worker","to":"blob","kind":"primary","step":7,"protocol":"HTTPS 443","label":"store documents"},
+    {"from":"api","to":"sql","kind":"primary","step":8,"protocol":"TCP 1433","label":null},
+    {"from":"api","to":"blob","kind":"secondary","step":null,"protocol":"HTTPS 443","label":"file access"},
+    {"from":"worker","to":"sql","kind":"secondary","step":null,"protocol":"TCP 1433","label":"persist results"},
+    {"from":"api","to":"keyvault","kind":"auth","step":null,"protocol":"HTTPS 443","label":"secret access"},
+    {"from":"APP","to":"law","kind":"telemetry","step":null,"protocol":null,"label":"diagnostics"}
+  ]
+}
