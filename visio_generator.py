@@ -709,6 +709,16 @@ def validate_json(json_data: dict) -> None:
     print("JSON validation passed")
 
 
+def _looks_like_file_path(text: str) -> bool:
+    """Heuristic: is this string more likely a file name than inline JSON?"""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if stripped[:1] in ("{", "["):
+        return False  # definitely inline JSON
+    return True
+
+
 def create_visio_from_json(json_input, output_file="output.vsdx"):
     """Create a .vsdx file from a JSON file path or JSON string.
 
@@ -733,6 +743,18 @@ def create_visio_from_json(json_input, output_file="output.vsdx"):
                 f"Encoding: UTF-8 (not 'Unicode'/UTF-16).") from None
         print(f"Loaded JSON from file: {json_input}")
     else:
+        # We get here when json_input is NOT a file that exists.
+        # If it *looks* like a file path, the real problem is usually that the
+        # file is missing (wrong name / folder / cwd) -- say so clearly rather
+        # than reporting a cryptic "expecting value" JSON error.
+        if isinstance(json_input, str) and _looks_like_file_path(json_input):
+            raise FileNotFoundError(
+                f"Could not find the JSON file: {json_input!r}\n"
+                f"Make sure the file exists and you give the right path.\n"
+                f"Check the current folder and the exact spelling/case.\n\n"
+                f"Examples:\n"
+                f"  python visio_generator.py network_diagram.json\n"
+                f"  python visio_generator.py C:/Users/you/Documents/fig.json")
         # treat as an inline JSON string
         if isinstance(json_input, str) and not json_input.strip():
             raise ValueError("json_input is empty.")
