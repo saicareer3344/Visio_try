@@ -276,7 +276,7 @@ class VisioShape:
         par_sec = _E("Section", N="Paragraph")
         par_row = ET.SubElement(par_sec, f"{{{V_NS}}}Row")
         par_row.set("IX", "0")
-        par_row.append(_cell("HorizontalAlign", "1"))
+        par_row.append(_cell("HorzAlign", "1"))
         shape.append(par_sec)
 
         # --- geometry ---------------------------------------------------------
@@ -448,7 +448,7 @@ class VisioConnector:
         par_sec = _E("Section", N="Paragraph")
         par_row = ET.SubElement(par_sec, f"{{{V_NS}}}Row")
         par_row.set("IX", "0")
-        par_row.append(_cell("HorizontalAlign", "1"))
+        par_row.append(_cell("HorzAlign", "1"))
         shape.append(par_sec)
 
         # rectangle geometry (white pill)
