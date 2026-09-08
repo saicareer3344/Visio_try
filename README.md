@@ -173,6 +173,38 @@ The same `visio_generator.py` code is used to regenerate it:
 python3 visio_generator.py network_diagram.json output.vsdx
 ```
 
+## Diagnosing layout / missing text or arrows
+
+If the generated `.vsdx` does not look the way you expect (boxes stacked on top
+of each other, no labels, no arrows), first check what the generator *thinks*
+it found in **your** JSON. `--describe` analyses the file and prints the title,
+page size, every shape's `id / text / x / y / w / h`, and every connector's
+endpoints + label — without writing a `.vsdx`:
+
+```bash
+python visio_generator.py --describe yourfile.json
+python visio_generator.py --describe yourfile.json -v   # per-shape detail
+```
+
+A quick way to *see* the layout (and confirm the coordinates are sane) is to
+render the produced `.vsdx` to a PNG with the bundled helper:
+
+```bash
+python preview_render.py yourfile.vsdx 0 preview.png   # opens preview.png
+```
+
+What to look for in the `--describe` output:
+
+* If every shape's `text` is empty/`None`, the label field name in your JSON
+  isn't recognised — tell me the field names and I'll extend detection.
+* If shapes all sit at the same `x / y` (or have 0 `w / h`), your JSON carries
+  positions that overlap or are degenerate — the geometry needs fixing.
+* If `shapes=` is very large or coordinates run to thousands of inches, a
+  container array (regions/groups) was picked instead of the node list.
+
+Paste the `--describe -v` output (or drop the `.json` into this folder) and the
+layout can be corrected precisely.
+
 ## Validation / note
 
 The generated packages are validated for structural correctness (ZIP integrity,

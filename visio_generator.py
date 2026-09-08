@@ -1318,6 +1318,33 @@ def _looks_like_file_path(text: str) -> bool:
     return True
 
 
+def describe_diagram(json_input, verbose=False):
+    """Analyse a JSON file/string and print what the generator would produce,
+    without writing a .vsdx.  Useful to debug layout/visibility issues."""
+    if isinstance(json_input, str) and os.path.isfile(json_input):
+        with open(json_input, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+    else:
+        data = json.loads(json_input)
+    norm = _normalise_json(data)
+    doc = norm.get("document", {})
+    print(f"Title   : {doc.get('title')!r}")
+    print(f"Pages   : {len(norm.get('pages', []))}")
+    for i, page in enumerate(norm.get("pages", [])):
+        print(f"  Page {i}: name={page.get('name')!r} "
+              f"size={page.get('width')} x {page.get('height')} in, "
+              f"shapes={len(page.get('shapes', []))} "
+              f"connectors={len(page.get('connectors', []))}")
+        if verbose:
+            for s in page.get("shapes", []):
+                print(f"     shape id={s.get('id')!r} text={s.get('text')!r} "
+                      f"x={s.get('x')} y={s.get('y')} "
+                      f"w={s.get('width')} h={s.get('height')}")
+            for c in page.get("connectors", []):
+                print(f"     conn {c.get('from_shape_id')} -> "
+                      f"{c.get('to_shape_id')} label={c.get('label')!r}")
+
+
 def create_visio_from_json(json_input, output_file="output.vsdx"):
     """Create a .vsdx file from a JSON file path or JSON string.
 
@@ -1511,7 +1538,12 @@ _BOILERPLATE_B64 = (
 #   python visio_generator.py                       -> run the built-in sample
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 1 and sys.argv[1] == "--describe":
+        if len(sys.argv) < 3:
+            print("Usage: python visio_generator.py --describe <file.json>")
+            sys.exit(1)
+        describe_diagram(sys.argv[2], verbose=("-v" in sys.argv))
+    elif len(sys.argv) > 1:
         json_path = sys.argv[1]
         output = sys.argv[2] if len(sys.argv) > 2 else "output.vsdx"
         create_visio_from_json(json_path, output)
