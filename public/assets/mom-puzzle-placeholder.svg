@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" fill="none">
+  <defs>
+    <linearGradient id="sky" x1="600" y1="0" x2="600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4D7D0"/>
+      <stop offset=".58" stop-color="#F9E7D8"/>
+      <stop offset="1" stop-color="#F5D6BE"/>
+    </linearGradient>
+    <linearGradient id="hill" x1="330" y1="455" x2="865" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C6D3B7"/>
+      <stop offset="1" stop-color="#8FA68B"/>
+    </linearGradient>
+    <linearGradient id="hill2" x1="830" y1="510" x2="320" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#AFC29F"/>
+      <stop offset="1" stop-color="#738E77"/>
+    </linearGradient>
+    <filter id="soft" x="294" y="83" width="620" height="620" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="34"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="900" fill="url(#sky)"/>
+  <circle cx="790" cy="300" r="168" fill="#F9E9C8" opacity=".72" filter="url(#soft)"/>
+  <circle cx="790" cy="300" r="112" fill="#F4C99E" opacity=".9"/>
+  <g fill="#FFF9F2" opacity=".84">
+    <path d="M119 252c11-38 64-43 81-11 31-14 69 8 66 42h-169c-12-16-1-31 22-31Z"/>
+    <path d="M884 174c10-27 46-30 60-7 22-10 50 7 47 31h-124c-9-12-1-24 17-24Z" opacity=".76"/>
+  </g>
+  <path d="M0 529c111-46 183-61 291-29 106 31 171 16 268-30 104-49 173-73 283-35 122 42 222 87 358 24v441H0V529Z" fill="url(#hill)"/>
+  <path d="M0 638c106-73 211-87 312-37 99 50 194 43 301-18 128-72 220-88 333-26 95 53 174 47 254-5v348H0V638Z" fill="url(#hill2)"/>
+  <path d="M0 733c162-60 255-36 369 5 113 40 220 23 334-38 126-67 233-55 342 11 52 31 104 48 155 43v146H0V733Z" fill="#657F6E" opacity=".44"/>
+  <g stroke="#667F65" stroke-width="9" stroke-linecap="round" opacity=".92">
+    <path d="M174 893c8-81 11-144-4-223M238 896c-3-76 7-127 30-183M1029 901c-7-99-4-174 18-239M945 900c8-72-2-139-30-196M525 902c3-69-3-119-24-173M597 901c-6-66 8-119 31-163"/>
+  </g>
+  <g fill="#C98291">
+    <circle cx="166" cy="644" r="19"/><circle cx="181" cy="623" r="19"/><circle cx="198" cy="644" r="19"/><circle cx="181" cy="664" r="19"/><circle cx="181" cy="644" r="10" fill="#F5D79A"/>
+    <circle cx="264" cy="713" r="15"/><circle cx="278" cy="696" r="15"/><circle cx="292" cy="713" r="15"/><circle cx="278" cy="730" r="15"/><circle cx="278" cy="713" r="8" fill="#F6DEA5"/>
+    <circle cx="1017" cy="667" r="20"/><circle cx="1034" cy="644" r="20"/><circle cx="1053" cy="667" r="20"/><circle cx="1034" cy="688" r="20"/><circle cx="1034" cy="667" r="10" fill="#F5D79A"/>
+    <circle cx="932" cy="735" r="15"/><circle cx="946" cy="718" r="15"/><circle cx="961" cy="735" r="15"/><circle cx="946" cy="752" r="15"/><circle cx="946" cy="735" r="8" fill="#F6DEA5"/>
+    <circle cx="551" cy="740" r="17"/><circle cx="566" cy="720" r="17"/><circle cx="582" cy="740" r="17"/><circle cx="566" cy="759" r="17"/><circle cx="566" cy="740" r="9" fill="#F6DEA5"/>
+  </g>
+  <g fill="#FFF8E7" opacity=".9">
+    <circle cx="75" cy="807" r="9"/><circle cx="323" cy="817" r="8"/><circle cx="409" cy="684" r="7"/><circle cx="842" cy="826" r="8"/><circle cx="1127" cy="796" r="9"/><circle cx="709" cy="681" r="7"/>
+  </g>
+  <rect x="34" y="34" width="1132" height="832" rx="28" stroke="#FFF9F2" stroke-width="7" opacity=".52"/>
+  <text x="600" y="848" text-anchor="middle" fill="#6F5B53" font-family="Georgia, serif" font-size="28" letter-spacing="3" opacity=".75">YOUR PHOTO WILL GO HERE</text>
+</svg>
