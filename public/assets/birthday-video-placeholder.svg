@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" fill="none">
+  <defs>
+    <linearGradient id="background" x1="110" y1="48" x2="1119" y2="735" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5DDD6"/>
+      <stop offset=".55" stop-color="#F4E6D8"/>
+      <stop offset="1" stop-color="#E6E2EF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="matrix(0 345 -480 0 633 349)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF9F2" stop-opacity=".92"/>
+      <stop offset="1" stop-color="#FFF9F2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#background)"/>
+  <rect width="1280" height="720" fill="url(#glow)"/>
+  <circle cx="1091" cy="134" r="76" fill="#F8E7C8" opacity=".8"/>
+  <path d="M0 558c145-78 269-106 402-58 136 49 217 71 356 12 159-67 321-63 522 39v169H0V558Z" fill="#BCC9B2" opacity=".74"/>
+  <path d="M0 630c157-50 308-28 440 19 145 51 267 1 402-51 156-61 294-49 438 21v101H0V630Z" fill="#9AAB96" opacity=".55"/>
+  <rect x="42" y="42" width="1196" height="636" rx="36" stroke="#FFF9F2" stroke-width="5" opacity=".75"/>
+  <g transform="translate(591 230)">
+    <rect x="-61" y="-17" width="122" height="82" rx="18" fill="#FFF9F2" fill-opacity=".76" stroke="#C98291" stroke-width="4"/>
+    <path d="m-61-2 61 45L61-2" stroke="#C98291" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M0 8c-11-20 9-28 13-14 3 10-6 18-13 14Z" fill="#C98291"/>
+    <path d="M15 17c20-11 28 9 14 13-10 3-18-6-14-13Z" fill="#C98291"/>
+    <path d="M3 33c11 20-9 28-13 14-3-10 6-18 13-14Z" fill="#C98291"/>
+    <path d="M-12 24c-20 11-28-9-14-13 10-3 18 6 14 13Z" fill="#C98291"/>
+    <circle cy="19" r="6" fill="#F5D998"/>
+  </g>
+  <text x="640" y="616" text-anchor="middle" fill="#FFF9F2" font-family="Georgia, serif" font-size="29" opacity=".92">made with love, just for you</text>
+</svg>
